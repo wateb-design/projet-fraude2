@@ -21,7 +21,8 @@ page = st.sidebar.radio("Aller vers :", [
     "🤖 LSTM",
     "🤖 GRU",
     "🤖 CNN-LSTM-GRU",
-    "📊 Comparaison"
+    "📊 Comparaison",
+    "🎯 Simulateur"
 ])
 
 # ─── FONCTION CHARGEMENT ───────────────────────────────────
@@ -46,7 +47,6 @@ def show_algo(algo):
     st.title(f"🤖 Modèle {algo}")
     st.divider()
 
-    # Métriques
     st.header("📊 Performance")
     col1,col2,col3,col4 = st.columns(4)
     col1.metric("Accuracy",  f"{metriques['accuracy']:.2%}")
@@ -59,7 +59,6 @@ def show_algo(algo):
     col7.metric("MCC",         f"{metriques['mcc']:.4f}")
     st.divider()
 
-    # Matrice de confusion
     st.header("🔥 Matrice de Confusion")
     fig1, ax1 = plt.subplots(figsize=(5,4))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax1,
@@ -69,7 +68,6 @@ def show_algo(algo):
     st.pyplot(fig1)
     st.divider()
 
-    # Courbes
     st.header("📈 Courbes ROC & Entraînement")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -162,7 +160,6 @@ elif page == "📊 Comparaison":
         m, _, _, _, _, _, _, _ = load_algo(algo)
         data[algo] = m
 
-    # Tableau comparatif
     st.header("📋 Tableau Récapitulatif")
     rows = []
     for algo in algos:
@@ -180,7 +177,6 @@ elif page == "📊 Comparaison":
     st.dataframe(rows, use_container_width=True)
     st.divider()
 
-    # Graphique comparatif
     st.header("📈 Comparaison Visuelle")
     metriques_noms = ["accuracy", "f1", "roc_auc", "recall", "precision"]
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -195,3 +191,62 @@ elif page == "📊 Comparaison":
     ax.set_title("Comparaison des métriques par modèle")
     ax.legend()
     st.pyplot(fig)
+
+# ─── PAGE SIMULATEUR ───────────────────────────────────────
+elif page == "🎯 Simulateur":
+    st.title("🎯 Simulateur de Prédiction — CNN-LSTM-GRU")
+    st.markdown("Sélectionne une transaction réelle du dataset test et découvre si le modèle la détecte comme **fraude ou normale**.")
+    st.divider()
+
+    path = os.path.join(BASE, "CNN-LSTM-GRU")
+    X_exemples   = np.load(os.path.join(path, "X_exemples.npy"))
+    y_exemples   = np.load(os.path.join(path, "y_exemples.npy"))
+    prob_exemples = np.load(os.path.join(path, "prob_exemples.npy"))
+
+    # Choix du type de transaction
+    st.subheader("1️⃣ Choisis le type de transaction")
+    type_tx = st.radio("", ["Transaction Normale", "Transaction Frauduleuse"], horizontal=True)
+
+    if type_tx == "Transaction Normale":
+        indices = np.where(y_exemples == 0)[0]
+        label_couleur = "normale"
+    else:
+        indices = np.where(y_exemples == 1)[0]
+        label_couleur = "frauduleuse"
+
+    # Choix de la transaction
+    st.subheader("2️⃣ Choisis une transaction")
+    idx = st.slider("Numéro de transaction", 0, len(indices)-1, 0)
+    transaction = X_exemples[indices[idx]]
+    proba = prob_exemples[indices[idx]]
+    reel  = y_exemples[indices[idx]]
+
+    # Affichage des valeurs
+    st.subheader("3️⃣ Valeurs de la transaction")
+    feature_names = ["Time"] + [f"V{i}" for i in range(1,29)] + ["Amount"]
+    df_tx = {"Feature": feature_names, "Valeur": transaction.tolist()}
+    st.dataframe(df_tx, use_container_width=True)
+    st.divider()
+
+    # Résultat
+    st.subheader("4️⃣ Résultat de la prédiction")
+    proba_val = float(proba[0]) if hasattr(proba, '__len__') else float(proba)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Probabilité de fraude", f"{proba_val:.2%}")
+        st.progress(proba_val)
+    with col2:
+        st.metric("Classe réelle", "🚨 Fraude" if reel == 1 else "✅ Normale")
+        if proba_val > 0.5:
+            st.error("🚨 FRAUDE DÉTECTÉE par le modèle")
+        else:
+            st.success("✅ Transaction NORMALE selon le modèle")
+
+    # Verdict
+    st.divider()
+    predit = 1 if proba_val > 0.5 else 0
+    if predit == reel:
+        st.success("✅ Le modèle a fait une **bonne prédiction** !")
+    else:
+        st.warning("⚠️ Le modèle s'est **trompé** sur cette transaction.")
