@@ -195,56 +195,58 @@ elif page == "📊 Comparaison":
 # ─── PAGE SIMULATEUR ───────────────────────────────────────
 elif page == "🎯 Simulateur":
     st.title("🎯 Simulateur de Prédiction — CNN-LSTM-GRU")
-    st.markdown("Entre les valeurs d'une transaction pour savoir si elle est **frauduleuse ou normale**.")
+    st.markdown("Sélectionne une transaction réelle du dataset test et découvre si le modèle la détecte comme **fraude ou normale**.")
     st.divider()
 
-    import onnxruntime as ort
-    import joblib
+    path = os.path.join(BASE, "CNN-LSTM-GRU")
+    X_exemples   = np.load(os.path.join(path, "X_exemples.npy"))
+    y_exemples   = np.load(os.path.join(path, "y_exemples.npy"))
+    prob_exemples = np.load(os.path.join(path, "prob_exemples.npy"))
 
-    @st.cache_resource
-    def load_onnx():
-        path = os.path.join(BASE, "CNN-LSTM-GRU", "model.onnx")
-        return ort.InferenceSession(path)
+    # Choix du type de transaction
+    st.subheader("1️⃣ Choisis le type de transaction")
+    type_tx = st.radio("", ["Transaction Normale", "Transaction Frauduleuse"], horizontal=True)
 
-    @st.cache_resource
-    def load_scaler():
-        path = os.path.join(BASE, "CNN-LSTM-GRU", "scaler.pkl")
-        return joblib.load(path)
+    if type_tx == "Transaction Normale":
+        indices = np.where(y_exemples == 0)[0]
+        label_couleur = "normale"
+    else:
+        indices = np.where(y_exemples == 1)[0]
+        label_couleur = "frauduleuse"
 
-    session = load_onnx()
-    scaler  = load_scaler()
+    # Choix de la transaction
+    st.subheader("2️⃣ Choisis une transaction")
+    idx = st.slider("Numéro de transaction", 0, len(indices)-1, 0)
+    transaction = X_exemples[indices[idx]]
+    proba = prob_exemples[indices[idx]]
+    reel  = y_exemples[indices[idx]]
 
+    # Affichage des valeurs
+    st.subheader("3️⃣ Valeurs de la transaction")
     feature_names = ["Time"] + [f"V{i}" for i in range(1,29)] + ["Amount"]
-
-    st.subheader("1️⃣ Entre les valeurs de la transaction")
-    cols = st.columns(5)
-    values = []
-    for i, fname in enumerate(feature_names):
-        val = cols[i%5].number_input(fname, value=0.0, format="%.4f")
-        values.append(val)
-
+    df_tx = {"Feature": feature_names, "Valeur": transaction.tolist()}
+    st.dataframe(df_tx, use_container_width=True)
     st.divider()
 
-    if st.button("🔍 Analyser la transaction"):
-        # Normalisation
-        inp = np.array(values).reshape(1, -1)
-        inp_scaled = scaler.transform(inp)
+    # Résultat
+    st.subheader("4️⃣ Résultat de la prédiction")
+    proba_val = float(proba[0]) if hasattr(proba, '__len__') else float(proba)
 
-        # Reshape pour CNN-LSTM-GRU (1, 1, 30)
-        inp_reshaped = inp_scaled.reshape(1, 1, 30).astype(np.float32)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Probabilité de fraude", f"{proba_val:.2%}")
+        st.progress(proba_val)
+    with col2:
+        st.metric("Classe réelle", "🚨 Fraude" if reel == 1 else "✅ Normale")
+        if proba_val > 0.5:
+            st.error("🚨 FRAUDE DÉTECTÉE par le modèle")
+        else:
+            st.success("✅ Transaction NORMALE selon le modèle")
 
-        # Prédiction ONNX
-        input_name = session.get_inputs()[0].name
-        proba = session.run(None, {input_name: inp_reshaped})[0][0][0]
-
-        # Résultat
-        st.subheader("2️⃣ Résultat")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Probabilité de fraude", f"{proba:.2%}")
-            st.progress(float(proba))
-        with col2:
-            if proba > 0.5:
-                st.error(f"🚨 FRAUDE DÉTECTÉE — Probabilité : {proba:.2%}")
-            else:
-                st.success(f"✅ Transaction NORMALE — Probabilité : {proba:.2%}")
+    # Verdict
+    st.divider()
+    predit = 1 if proba_val > 0.5 else 0
+    if predit == reel:
+        st.success("✅ Le modèle a fait une **bonne prédiction** !")
+    else:
+        st.warning("⚠️ Le modèle s'est **trompé** sur cette transaction.")
