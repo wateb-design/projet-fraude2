@@ -2,3 +2,6 @@ streamlit
 numpy
 matplotlib
 seaborn
+onnxruntime
+joblib
+scikit-learn
